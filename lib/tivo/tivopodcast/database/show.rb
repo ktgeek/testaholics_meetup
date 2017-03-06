@@ -28,23 +28,5 @@ module Tivo2Podcast
     scope :on_disk, -> { where(on_disk: true) }
     scope :on_disk_for_config, ->(config) { on_disk.where(configid: config) }
     scope :episode_for, ->(config, programid) { where(configid: config, s_ep_programid: programid) }
-
-    # def self.new_from_config_show_filename(config, showinfo, filename)
-    #   show = Show.new
-    #   show.config = config
-
-    #   show.s_name = showinfo.title
-    #   show.s_ep_title = showinfo.episode_title(use_date_if_nil: true)
-    #   show.s_ep_number = showinfo.episode_number
-    #   show.s_ep_description = showinfo.description
-    #   show.s_ep_length = showinfo.duration
-    #   show.s_ep_timecap = showinfo.time_captured.to_i
-    #   show.s_ep_programid = showinfo.program_id
-    #   show.on_disk = true
-
-    #   show.filename = filename
-
-    #   show
-    # end
   end
 end

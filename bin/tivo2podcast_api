@@ -35,6 +35,10 @@ before do
   @includes = params[:include] || []
 end
 
+after do
+  response.body = JSON.dump(response.body)
+end
+
 get '/configs' do
   configs = if @includes.include?('rss_files')
     Tivo2Podcast::Config.preload(:rss_files).map do |config|
@@ -45,7 +49,7 @@ get '/configs' do
   else
     Tivo2Podcast::Config.all.as_json
   end
-  configs.to_json
+  configs
 end
 
 post '/configs' do
@@ -59,7 +63,7 @@ post '/configs' do
                                     ep_to_keep: ep_to_keep)
 
   return error_result("Error saving config") if !config.save
-  { status: :ok, config: config }.to_json
+  { status: :ok, config: config }
 end
 
 get '/configs/:id' do
@@ -71,7 +75,7 @@ get '/configs/:id' do
 
   json = config.as_json
   json[:rss_files] = config.rss_files.as_json if @includes.include?('rss_files')
-  json.to_json
+  json
 end
 
 put '/configs/:id' do
@@ -87,7 +91,7 @@ put '/configs/:id' do
   return error_result("Must have a config name and a show name") unless config.config_name && config.show_name
 
   return error_result("Error saving config") if !config.save
-  { status: :ok, config: config }.to_json
+  { status: :ok, config: config }
 end
 
 end
@@ -96,12 +100,12 @@ get '/configs/:id/shows' do
   not_found_result("Config not found") unless Tivo2Podcast::Config.find(params[:id]).exists?
   scope = Tivo2Podcast::Show.where(configid: params[:id])
   scope = scope.on_disk unless @includes.include?('deleted')
-  scope.to_json
+  scope.as_json
 end
 
 get '/configs/:id/rssfiles' do
   not_found_result("Config not found") unless Tivo2Podcast::Config.find(params[:id]).exists?
-  Tivo2Podcast::RssFile.joins(:configs).where(configs: {id: params[:id]}).to_json
+  Tivo2Podcast::RssFile.joins(:configs).where(configs: {id: params[:id]}).as_json
 end
 
 get '/shows' do
@@ -117,7 +121,7 @@ get '/shows' do
     scope = scope.where(timecap.gteq(since_time))
   end
 
-  scope.to_json
+  scope.as_json
 end
 
 get '/shows/:id' do
@@ -138,7 +142,7 @@ get '/rssfiles' do
       json[:configs] = configs
     end
     json
-  end.to_json
+  end
 end
 
 get '/rssfiles/:id' do
@@ -157,7 +161,7 @@ get '/rssfiles/:id' do
     json[:configs] = configs
   end
 
-  json.to_json
+  json
 end
 
 def error_result(message = nil)
@@ -170,7 +174,7 @@ end
 
 def generic_results(status_code, status_type, message)
   status status_code
-  { status: status_type, message: message }.to_json
+  { status: status_type, message: message }
 end
 
 
