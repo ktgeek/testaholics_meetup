@@ -20,42 +20,159 @@
 $:.unshift File.expand_path(File.join(File.dirname(__FILE__), '..', 'lib', 'tivo'))
 
 require 'sinatra'
+require 'rack/contrib'
 require 'json'
 require 'tivopodcast/database'
 require 'pp'
 
 Tivo2Podcast.connect_database(File.join(File.dirname(__FILE__), '..', 'db', '/tivo2podcast.db'))
 
+use Rack::PostBodyContentTypeParser
+
+before do
+  content_type :json
+
+  @includes = params[:include] || []
+end
+
 get '/configs' do
-  content_type :json
-
-  Tivo2Podcast::Config.all.to_json
+  configs = if @includes.include?('rss_files')
+    Tivo2Podcast::Config.preload(:rss_files).map do |config|
+      json = config.as_json
+      json[:rss_files] = config.rss_files.as_json
+      json
+    end
+  else
+    Tivo2Podcast::Config.all.as_json
+  end
+  configs.to_json
 end
 
-get '/config/:id' do
-  content_type :json
+post '/configs' do
+  config_name = params[:config_name]
+  show_name = params[:show_name]
+  return error_result("Must have a config name and a show name") unless config_name && show_name
 
-  id = params[:id].to_i
-  Tivo2Podcast::Config.find(id).to_json
+  ep_to_keep = params[:ep_to_keep] || 4
+
+  config = Tivo2Podcast::Config.new(config_name: config_name, show_name: show_name,
+                                    ep_to_keep: ep_to_keep)
+
+  return error_result("Error saving config") if !config.save
+  { status: :ok, config: config }.to_json
 end
 
-get '/config/:id/shows' do
-  content_type :json
+get '/configs/:id' do
+  begin
+    config = Tivo2Podcast::Config.find(params[:id])
+  rescue ActiveRecord::RecordNotFound
+    not_found_result("Config not found")
+  end
 
-  id = params[:id].to_i
-  includes = params[:include] || []
+  json = config.as_json
+  json[:rss_files] = config.rss_files.as_json if @includes.include?('rss_files')
+  json.to_json
+end
 
-  scope = Tivo2Podcast::Show.where(configid: id)
-  scope = scope.on_disk unless includes.include?('deleted')
+put '/configs/:id' do
+  config = begin
+    Tivo2Podcast::Config.find(params[:id])
+  rescue ActiveRecord::RecordNotFound
+    Tivo2Podcast::Config.new
+  end
+
+  config.assign_attribures =
+    params.select { |k, v| [:config_name, :show_name, :ep_to_keep].include?(k) }
+
+  return error_result("Must have a config name and a show name") unless config.config_name && config.show_name
+
+  return error_result("Error saving config") if !config.save
+  { status: :ok, config: config }.to_json
+end
+
+end
+
+get '/configs/:id/shows' do
+  not_found_result("Config not found") unless Tivo2Podcast::Config.find(params[:id]).exists?
+  scope = Tivo2Podcast::Show.where(configid: params[:id])
+  scope = scope.on_disk unless @includes.include?('deleted')
   scope.to_json
 end
 
-get '/show/:id' do
-  content_type :json
-
-  id = params[:id].to_i
-  Tivo2Podcast::Show.find(id).to_json
+get '/configs/:id/rssfiles' do
+  not_found_result("Config not found") unless Tivo2Podcast::Config.find(params[:id]).exists?
+  Tivo2Podcast::RssFile.joins(:configs).where(configs: {id: params[:id]}).to_json
 end
+
+get '/shows' do
+  scope = if @includes.include?('deleted')
+    Tivo2Podcast::Show.all
+  else
+    Tivo2Podcast::Show.on_disk
+  end
+
+  if params[:since]
+    since_time = time_for(params[:since]).to_i
+    timecap = Tivo2Podcast::Show.arel_table[:s_ep_timecap]
+    scope = scope.where(timecap.gteq(since_time))
+  end
+
+  scope.to_json
+end
+
+get '/shows/:id' do
+  begin
+    Tivo2Podcast::Show.find(params[:id]).to_json
+  rescue
+    not_found_result("Show not found")
+  end
+end
+
+get '/rssfiles' do
+  Tivo2Podcast::RssFile.all.map do |rss_file|
+    json = rss_file.as_json
+    configs = rss_file.configs
+    if @includes.include?('config_ids')
+      json[:configs] = configs.map(&:id)
+    elsif @includes.include?('configs')
+      json[:configs] = configs
+    end
+    json
+  end.to_json
+end
+
+get '/rssfiles/:id' do
+  begin
+    rss_file = Tivo2Podcast::RssFile.find(params[:id])
+  rescue
+    not_found_result("RssFile not found")
+  end
+
+  json = rss_file.as_json
+
+  configs = rss_file.configs
+  if @includes.include?('config_ids')
+    json[:configs] = configs.map(&:id)
+  elsif @includes.include?('configs')
+    json[:configs] = configs
+  end
+
+  json.to_json
+end
+
+def error_result(message = nil)
+  generic_results(400, :error, message || "Unknown")
+end
+
+def not_found_result(message = nil)
+  generic_results(404, :not_found, message || "Not found")
+end
+
+def generic_results(status_code, status_type, message)
+  status status_code
+  { status: status_type, message: message }.to_json
+end
+
 
 # Local Variables:
 # mode: ruby
