@@ -1,9 +1,17 @@
 #!/usr/bin/env ruby
 
 require 'sinatra'
+require 'rack/contrib'
 require 'json'
+
+use Rack::PostBodyContentTypeParser
 
 get '/' do
   content_type :json
   { message: 'Hello world!' }.to_json
+end
+
+post '/' do
+  content_type :json
+  { message: params[:message] }.to_json
 end

@@ -1,0 +1,70 @@
+#!/usr/bin/env ruby
+
+require 'tty-prompt'
+require 'tty-table'
+require 'tty-pager'
+require 'rest-client'
+require 'json'
+require 'pp'
+
+def get_rssfile(id)
+  response = RestClient.get(
+    "http://localhost:4567/rssfiles/#{id}?include[]=config_ids")
+  JSON.parse(response.body)
+rescue RestClient::ExceptionWithResponse => e
+  response = e.response
+  if response.code == 404
+    $stderr.puts "RSS file not found"
+    exit(1)
+  else
+    $stderr.puts "unknown #{e.code} error: #{e.body}"
+    exit(1)
+  end
+end
+
+def get_show_for_config(id)
+  show_response = RestClient.get "http://localhost:4567/configs/#{id}/shows"
+  JSON.parse(show_response.body)
+rescue RestClient::ExceptionWithResponse => e
+  response = e.response
+  if response.code == 404
+    $stderr.puts "Config not found"
+    exit(1)
+  else
+    $stderr.puts "unknown #{e.code} error: #{e.body}"
+    exit(1)
+  end
+end
+
+prompt = TTY::Prompt.new
+rssfile_id = prompt.ask("Enter an RSS file id:", convert: :int)
+printf("\n")
+
+rssfile = get_rssfile(rssfile_id)
+
+shows = rssfile["configs"].map do |config_id|
+  get_show_for_config(config_id)
+end
+shows = shows.flatten.sort_by { |s| s["s_ep_timecap"] }
+
+output = "feed: #{rssfile["feed_title"]}\n" <<
+         "description: #{rssfile["feed_description"]}\n" <<
+         "filename: #{rssfile["filename"]}\n" <<
+         "Shows in this feed:\n"
+
+show_output = shows.map do |s|
+  [s["s_name"], s["s_ep_title"], Time.at(s["s_ep_timecap"])]
+end
+
+table = TTY::Table.new(%w/Name Title Captured/, show_output)
+
+output << table.render(:unicode, resize: true, width: 95, multiline: true) do |renderer|
+  renderer.border.separator = :each_row
+end
+
+pager = TTY::Pager.new
+pager.page(output)
+
+# Local Variables:
+# mode: ruby
+# End:

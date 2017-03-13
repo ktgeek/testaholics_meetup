@@ -1,0 +1,31 @@
+#!/usr/bin/env ruby
+
+require 'tty-prompt'
+require 'rest-client'
+require 'json'
+require 'pp'
+
+response = RestClient.get 'http://localhost:4567/'
+reply = JSON.parse(response.body)
+
+pp reply
+puts reply['message']
+
+printf("\n")
+
+prompt = TTY::Prompt.new
+message = prompt.ask("Please type a short message:")
+
+response = RestClient.post(
+  'http://localhost:4567/',
+  { message: message }.to_json,
+  {content_type: :json, accept: :json}
+)
+reply = JSON.parse(response.body)
+
+pp reply
+puts reply['message']
+
+# Local Variables:
+# mode: ruby
+# End:

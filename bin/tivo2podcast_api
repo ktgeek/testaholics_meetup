@@ -23,9 +23,11 @@ require 'sinatra'
 require 'rack/contrib'
 require 'json'
 require 'tivopodcast/database'
+require 'byebug'
 require 'pp'
 
-Tivo2Podcast.connect_database(File.join(File.dirname(__FILE__), '..', 'db', '/tivo2podcast.db'))
+Tivo2Podcast.connect_database(
+  File.join(File.dirname(__FILE__), '..', 'db', '/tivo2podcast.db'))
 
 use Rack::PostBodyContentTypeParser
 
@@ -55,12 +57,15 @@ end
 post '/configs' do
   config_name = params[:config_name]
   show_name = params[:show_name]
-  return error_result("Must have a config name and a show name") unless config_name && show_name
+  unless config_name && show_name
+    return error_result("Must have a config name and a show name")
+  end
 
   ep_to_keep = params[:ep_to_keep] || 4
 
-  config = Tivo2Podcast::Config.new(config_name: config_name, show_name: show_name,
-                                    ep_to_keep: ep_to_keep)
+  config =
+    Tivo2Podcast::Config.new(config_name: config_name, show_name: show_name,
+                             ep_to_keep: ep_to_keep)
 
   return error_result("Error saving config") if !config.save
   { status: :ok, config: config }
@@ -70,11 +75,13 @@ get '/configs/:id' do
   begin
     config = Tivo2Podcast::Config.find(params[:id])
   rescue ActiveRecord::RecordNotFound
-    not_found_result("Config not found")
+    return not_found_result("Config not found")
   end
 
   json = config.as_json
-  json[:rss_files] = config.rss_files.as_json if @includes.include?('rss_files')
+  if @includes.include?('rss_files')
+    json[:rss_files] = config.rss_files.as_json
+  end
   json
 end
 
@@ -86,26 +93,40 @@ put '/configs/:id' do
   end
 
   config.assign_attribures =
-    params.select { |k, v| [:config_name, :show_name, :ep_to_keep].include?(k) }
+    params.select do |k, v|
+    [:config_name, :show_name, :ep_to_keep].include?(k)
+  end
 
-  return error_result("Must have a config name and a show name") unless config.config_name && config.show_name
+  unless config.config_name && config.show_name
+    return error_result("Must have a config name and a show name")
+  end
 
   return error_result("Error saving config") if !config.save
   { status: :ok, config: config }
 end
 
-end
-
 get '/configs/:id/shows' do
-  not_found_result("Config not found") unless Tivo2Podcast::Config.find(params[:id]).exists?
+  unless Tivo2Podcast::Config.where(id: params[:id]).exists?
+    return not_found_result("Config not found")
+  end
   scope = Tivo2Podcast::Show.where(configid: params[:id])
   scope = scope.on_disk unless @includes.include?('deleted')
+
+  if params[:since]
+    since_time = time_for(params[:since]).to_i
+    timecap = Tivo2Podcast::Show.arel_table[:s_ep_timecap]
+    scope = scope.where(timecap.gteq(since_time))
+  end
+
   scope.as_json
 end
 
 get '/configs/:id/rssfiles' do
-  not_found_result("Config not found") unless Tivo2Podcast::Config.find(params[:id]).exists?
-  Tivo2Podcast::RssFile.joins(:configs).where(configs: {id: params[:id]}).as_json
+  unless Tivo2Podcast::Config.where(id: params[:id]).exists?
+    return not_found_result("Config not found")
+  end
+  Tivo2Podcast::RssFile.joins(:configs).
+    where(configs: {id: params[:id]}).as_json
 end
 
 get '/shows' do
@@ -128,7 +149,7 @@ get '/shows/:id' do
   begin
     Tivo2Podcast::Show.find(params[:id]).to_json
   rescue
-    not_found_result("Show not found")
+    return not_found_result("Show not found")
   end
 end
 
@@ -149,7 +170,7 @@ get '/rssfiles/:id' do
   begin
     rss_file = Tivo2Podcast::RssFile.find(params[:id])
   rescue
-    not_found_result("RssFile not found")
+    return not_found_result("RssFile not found")
   end
 
   json = rss_file.as_json
