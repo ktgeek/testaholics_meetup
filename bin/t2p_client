@@ -15,11 +15,10 @@ rescue RestClient::ExceptionWithResponse => e
   response = e.response
   if response.code == 404
     $stderr.puts "RSS file not found"
-    exit(1)
   else
-    $stderr.puts "unknown #{e.code} error: #{e.body}"
-    exit(1)
+    $stderr.puts "unknown #{response.code} error: #{response.body}"
   end
+  exit(1)
 end
 
 def get_show_for_config(id)
@@ -29,11 +28,30 @@ rescue RestClient::ExceptionWithResponse => e
   response = e.response
   if response.code == 404
     $stderr.puts "Config not found"
-    exit(1)
   else
-    $stderr.puts "unknown #{e.code} error: #{e.body}"
-    exit(1)
+    $stderr.puts "unknown #{response.code} error: #{response.body}"
   end
+  exit(1)
+end
+
+def report_print(rssfile, shows)
+  output = "feed: #{rssfile["feed_title"]}\n" <<
+           "description: #{rssfile["feed_description"]}\n" <<
+           "filename: #{rssfile["filename"]}\n" <<
+           "Shows in this feed:\n"
+
+  show_output = shows.map do |s|
+    [s["s_name"], s["s_ep_title"], Time.at(s["s_ep_timecap"])]
+  end
+
+  table = TTY::Table.new(%w/Name Title Captured/, show_output)
+
+  output << table.render(:unicode, resize: true, width: 95, multiline: true) do |renderer|
+    renderer.border.separator = :each_row
+  end
+
+  pager = TTY::Pager.new
+  pager.page(output)
 end
 
 prompt = TTY::Prompt.new
@@ -47,23 +65,7 @@ shows = rssfile["configs"].map do |config_id|
 end
 shows = shows.flatten.sort_by { |s| s["s_ep_timecap"] }
 
-output = "feed: #{rssfile["feed_title"]}\n" <<
-         "description: #{rssfile["feed_description"]}\n" <<
-         "filename: #{rssfile["filename"]}\n" <<
-         "Shows in this feed:\n"
-
-show_output = shows.map do |s|
-  [s["s_name"], s["s_ep_title"], Time.at(s["s_ep_timecap"])]
-end
-
-table = TTY::Table.new(%w/Name Title Captured/, show_output)
-
-output << table.render(:unicode, resize: true, width: 95, multiline: true) do |renderer|
-  renderer.border.separator = :each_row
-end
-
-pager = TTY::Pager.new
-pager.page(output)
+report_print(rssfile, shows)
 
 # Local Variables:
 # mode: ruby

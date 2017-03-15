@@ -1,0 +1,27 @@
+#!/usr/bin/env ruby
+
+require 'rest-client'
+require 'json'
+require 'pp'
+
+TOKEN = '8YJjxVBEOLuYife9465jYnd3z2Hj6z3zpqqA5pOxnXGiViWzhtzC6ob7LAJsdt2R'
+
+response = RestClient.get(
+  'http://localhost:3000/api/v1/courses/23/users/6?include[]=enrollments',
+  { Authorization: "Bearer #{TOKEN}" }
+)
+
+course_user = JSON.parse(response.body)
+score =
+  course_user.dig('enrollments', 0, 'grades', 'current_score')
+
+activity =
+  course_user.dig('enrollments', 0, 'last_activity_at')
+
+puts "#{course_user['name']} (#{course_user['login_id']})"
+puts "Current score: #{score}"
+puts "Last activity: #{activity}"
+
+# Local Variables:
+# mode: ruby
+# End:

@@ -1,0 +1,41 @@
+#!/usr/bin/env ruby
+
+require 'tty-prompt'
+require 'rest-client'
+require 'json'
+require 'pp'
+
+prompt = TTY::Prompt.new
+
+
+post_data = {
+  config_name: prompt.ask('Config name:'),
+  show_name: prompt.ask('Show name:'),
+  ep_to_keep: prompt.ask('Episodes to keep in the feed:', convert: :int),
+  handbrake_profile: prompt.ask("Handbrake profile to use:")
+}
+
+begin
+  response = RestClient.post(
+    'http://localhost:4567/configs',
+    post_data.to_json,
+    { content_type: :json, accept: :json }
+  )
+rescue RestClient::ExceptionWithResponse => e
+  response = e.response
+  if response.code == 400
+    response_json = JSON.parse(response.body)
+    $stderr.puts "400 Bad Request: #{response_json['message']}"
+  else
+    $stderr.puts "unknown #{response.code} error: #{response.body}"
+  end
+  exit(1)
+end
+
+json_response = JSON.parse(response.body)
+config = json_response['config']
+pp config
+
+# Local Variables:
+# mode: ruby
+# End:
